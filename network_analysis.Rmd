@@ -1,0 +1,69 @@
+---
+title: "Capital Bike Share Network Analysis"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+
+```{r message=FALSE, warning=FALSE}
+# Load packages
+# install.packages("igraph")
+library(igraph)
+library(dplyr)
+```
+In this notebook, I will examine the patterns of rides among all bike stations and try to visualize the network of these stations, connected by rides.
+
+The first step is to create a data frame suitable for network analysis. The network database consists of two data sets, one for nodes and one for links.
+
+```{r}
+# Create the nodes, i.e. the 364 bike stations
+nodes <- map_df %>%
+  group_by(Start.station) %>%
+  summarise(
+            lat = first(LATITUDE),
+            lon = first(LONGITUDE),
+            add = first(Address),
+            city = first(City),
+            zip = first(Zip)
+            )
+nodes$id <- 1:nrow(nodes)
+head(nodes)
+```
+
+```{r}
+# Create the links, i.e. the "transactions" among start and end stations
+links <- map_df %>%
+  group_by(Start.station, End.station) %>%
+  summarise(
+    total.rides = n(),
+    avg.duration = mean(duration.min),
+    from = 0,
+    to = 0)
+
+for (i in 1:nrow(links)){
+  links$from[i] <- nodes$id[(1:nrow(nodes))[nodes$Start.station == links$Start.station[i]]]
+  links$to[i] <- nodes$id[(1:nrow(nodes))[nodes$Start.station == links$End.station[i]]]
+}
+
+links$weight <- links$total.rides
+
+head(links)
+```
+
+```{r}
+# Create an igraph object 
+net <- graph_from_data_frame(d=links, vertices=nodes, directed=T)
+net <- simplify(net, remove.multiple = F, remove.loops = T)
+```
+```{r fig.width=10, fig.height=10}
+l <- layout_with_fr(net)
+plot(net, edge.arrow.size =.1, edge.color="grey50",
+     vertex.label = NA, edge.curved =.1, vertex.size = 3, vertex.color="tomato", layout=l)
+```
+
+
+
+
+
+

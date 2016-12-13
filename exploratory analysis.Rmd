@@ -1,0 +1,81 @@
+---
+title: "Capital Bike Share Exploratory Analysis"
+output:
+  html_notebook: default
+  html_document: default
+---
+
+This notebook aims to conduct initial exploratory analysis on the data included in our integrated bike share data for Washington, D.C., in 2015. 
+
+```{r, message=FALSE, warning=FALSE}
+library(dplyr)
+library(ggplot2)
+library(plotly)
+library(gridExtra)
+library(cowplot)
+library(ggthemes)
+library(viridis)
+library(knitr)
+library(scales)
+```
+
+Clean up the dataset loaded from flat file to appropriately reflected the nature of the variables. The variables included in the dataset are: **`r paste(variable.names(df), sep = ",")`**. 
+```{r, message=FALSE, warning=FALSE}
+df <- read.csv("/home/rstudio/capital-bike-share/bike_weather_aggregated.csv", stringsAsFactors = FALSE)
+df <- df %>%
+  mutate(date = as.Date(date, format="%Y-%m-%d", tz="EST"),
+         Start.station = as.factor(Start.station),
+         Subscription.Type = as.factor(Subscription.Type),
+         weekday = factor(weekday, levels = c("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")))
+```
+First thing we'll do is to run distribution analysis on the main continuous variables in the dataset: **total_rides** and **average_duration**. We will apply the following categorical variables as color fill just to generate some really high level between-group comparison at the mean time.
+```{r, message=FALSE, warning=FALSE}
+g1 <- ggplot(data=df)
+g1 + geom_histogram(mapping = aes(total_rides, fill = Subscription.Type), binwidth = 0.5) -> g2
+g1 + geom_histogram(mapping = aes(log(df$average_duration), fill = Subscription.Type), bins = 100) -> g3
+g1 + geom_histogram(mapping = aes(total_rides, fill = weekday), binwidth = 0.5) -> g4
+g1 + geom_histogram(mapping = aes(log(df$average_duration), fill = weekday), bins = 100) -> g5
+g1 + geom_histogram(mapping = aes(total_rides, fill = as.factor(rushhour)), binwidth = 0.5) -> g6
+g1 + geom_histogram(mapping = aes(log(df$average_duration), fill = as.factor(rushhour)), bins = 100) -> g7
+g1 + geom_histogram(mapping = aes(total_rides, fill = as.factor(holiday)), binwidth = 0.5) -> g8
+g1 + geom_histogram(mapping = aes(log(df$average_duration), fill = as.factor(holiday)), bins = 100) -> g9
+plot_grid(g2, g3, nrow = 2, rel_widths = c(1/2, 1/2))
+plot_grid(g4, g5, nrow = 2, rel_widths = c(1/2, 1/2))
+plot_grid(g6, g7, nrow = 2, rel_widths = c(1/2, 1/2))
+plot_grid(g8, g9, nrow = 2, rel_widths = c(1/2, 1/2))
+```
+In the above visuals we used natural logarithm to showcase the distribution of **average_duration** so that the extreme large outliers on the positive side will not overshadow the spreadoutness of the majority data points. It seems that some factors, such as **Subscription.Type** and **holiday**, do seem to make the distributino of **total_rides** and **average_duration** uneven. We will dig more into that in the following analysis.
+
+
+```{r, message=FALSE, warning=FALSE}
+df %>%
+  select(hour, weekday, total_rides, average_duration) %>%
+  mutate(total_duration = total_rides * average_duration, 
+         hour = factor(hour, levels = (0:23))) %>%
+  group_by(hour, weekday) %>%
+  summarise(count.rides = sum(total_rides), total.duration = sum(total_duration)) -> df.1
+
+g10 <- ggplot(data=df.1, aes(x=hour, y=weekday, fill=count.rides)) +
+  geom_tile(color="white", size=0.1)+ coord_equal() +
+  labs(x=NULL, y=NULL, title="Count of Rides Per Weekday & Hour of Day") +
+  theme_tufte(base_family="Calibri") + theme(plot.title=element_text(hjust=0.5, size = 10)) +
+  theme(axis.ticks=element_blank()) + theme(axis.text=element_text(size=7)) + theme(legend.position="none") +
+  scale_fill_gradient(low = "white", high = "steelblue")
+g11 <- ggplot(data=df.1, aes(x=hour, y=weekday, fill=total.duration)) +
+  geom_tile(color="white", size=0.1)+ coord_equal() +
+  labs(x=NULL, y=NULL, title="Total Duration Per Weekday & Hour of Day") +
+  theme_tufte(base_family="Calibri") + theme(plot.title=element_text(hjust=0.5, size = 10)) + theme(legend.position="none") +
+  theme(axis.ticks=element_blank()) + theme(axis.text=element_text(size=7)) +
+  scale_fill_gradient(low = "white", high = "firebrick")
+g12 <- ggplot(data=df.1, aes(x=hour, y=weekday, fill=total.duration/count.rides)) +
+  geom_tile(color="white", size=0.1)+ coord_equal() +
+  labs(x=NULL, y=NULL, title="Average Duration Per Weekday & Hour of Day") +
+  theme_tufte(base_family="Calibri") + theme(plot.title=element_text(hjust=0.5, size = 10)) + theme(legend.position="none") +
+  theme(axis.ticks=element_blank()) + theme(axis.text=element_text(size=7)) +
+  scale_fill_gradient(low = "white", high = "springgreen3")
+plot_grid(g10, g12, nrow = 2, rel_heights = c(1/2, 1/2))
+
+```
+The above heatmap for day of week/hour of day indicates that there's a strong pattern of how many rides people need in workdays compared to weekends. It appears that the DC population has more rides during *rush hours* (7-8 AM and 5-7 PM) in work days and more rides in *day time* (from 9 AM to 6 PM) at weekend. It is also interesting to see that the average ride duration is longer around noon no matter it's work days or weekend.
+
+
